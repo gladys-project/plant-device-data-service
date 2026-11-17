@@ -1,0 +1,60 @@
+# Maven output and compiled packages
+target/
+/out/
+*.class
+*.jar
+*.war
+*.ear
+!/.mvn/wrapper/maven-wrapper.jar
+
+# Local configuration and secret material
+.env
+.env.*
+/gladys.env
+*.env
+*.env.*
+!/.env.example
+secrets/
+.secrets/
+.aws/
+.ssh/
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+/settings.xml
+
+# IDE and editor state
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.project
+.classpath
+.settings/
+.factorypath
+*.swp
+*.swo
+*~
+*.orig
+
+# Logs, diagnostics and caches
+*.log
+*.hprof
+*.jfr
+hs_err_pid*
+replay_pid*
+.cache/
+__pycache__/
+*.py[cod]
+
+# Local runtime data and OS files
+/data/
+/volumes/
+/tmp/
+.DS_Store
+Thumbs.db
+Desktop.ini

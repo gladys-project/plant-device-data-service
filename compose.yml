@@ -1,0 +1,23 @@
+name: plant-device-data-service
+services:
+  plant-device-data-service:
+    image: ${PLANT_DEVICE_DATA_IMAGE:-plant-device-data-service:local}
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: deployed
+      SERVER_PORT: "8080"
+      SPRING_KAFKA_BOOTSTRAPSERVERS: ${SPRING_KAFKA_BOOTSTRAPSERVERS:-kafka:29092}
+      SPRING_MONGODB_URI: ${SPRING_MONGODB_URI:?Supply the MongoDB URI including the database}
+      SPRING_KAFKA_SECURITY_PROTOCOL:
+      SPRING_KAFKA_PROPERTIES_SASL_MECHANISM:
+      SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG:
+      DEVICE_DATA_TOPIC: ${DEVICE_DATA_TOPIC:-gladys.device.data.v1}
+      PLANT_DEVICE_DATA_GROUP: ${PLANT_DEVICE_DATA_GROUP:-gladys.plant-device-data-service.v1}
+    ports:
+      - "127.0.0.1:${PLANT_DEVICE_DATA_HTTP_PORT:-8082}:8080"
+    networks: [gladys]
+    restart: unless-stopped
+networks:
+  gladys:
+    external: true
+    name: ${GLADYS_NETWORK:-gladys}

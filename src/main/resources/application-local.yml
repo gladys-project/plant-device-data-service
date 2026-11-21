@@ -1,0 +1,6 @@
+# Host-run infrastructure; topic/group defaults stay in application.yml.
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+  mongodb:
+    uri: mongodb://localhost:27017/plant_device_data

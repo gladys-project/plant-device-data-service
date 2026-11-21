@@ -1,0 +1,68 @@
+server:
+  port: 8082
+spring:
+  application:
+    name: plant-device-data-service
+  main:
+    web-application-type: reactive
+  mongodb:
+    uri: mongodb://localhost:27017/plant_device_data
+    representation:
+      uuid: standard
+  data:
+    mongodb:
+      auto-index-creation: false
+  kafka:
+    bootstrap-servers: localhost:9092
+    admin:
+      auto-create: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      properties:
+        allow.auto.create.topics: false
+  cloud:
+    function:
+      definition: onDeviceDataEvent
+    stream:
+      function:
+        autodetect: false
+      bindings:
+        onDeviceDataEvent-in-0:
+          destination: ${DEVICE_DATA_TOPIC:gladys.device.data.v1}
+          group: ${PLANT_DEVICE_DATA_GROUP:gladys.plant-device-data-service.v1}
+          content-type: application/json
+          consumer:
+            auto-startup: false
+            use-native-decoding: false
+      kafka:
+        binder:
+          brokers: ${spring.kafka.bootstrap-servers}
+          auto-create-topics: false
+          auto-add-partitions: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  health:
+    mongodb:
+      enabled: false
+---
+spring:
+  config:
+    activate:
+      on-profile: deployed
+management:
+  health:
+    mongodb:
+      enabled: true

@@ -1,0 +1,17 @@
+# Share application defaults, then isolate all external addresses from developer profiles.
+spring:
+  config:
+    import: classpath:application.yml
+---
+spring:
+  kafka:
+    bootstrap-servers: 127.0.0.1:1
+  mongodb:
+    uri: mongodb://127.0.0.1:1/plant_device_test?connectTimeoutMS=100&serverSelectionTimeoutMS=100
+management:
+  health:
+    mongodb:
+      enabled: false
+logging:
+  level:
+    org.mongodb.driver.cluster: ERROR

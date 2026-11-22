@@ -9,6 +9,7 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 
 import com.gladys.plantdevice.mapping.DeviceStateDocumentMapper;
+import com.gladys.plantdevice.mapping.DeviceRegistrationMapper;
 import com.gladys.plantdevice.mapping.DeviceSummaryMapper;
 import com.gladys.plantdevice.model.DeviceData;
 import com.gladys.plantdevice.model.State;
@@ -35,7 +36,7 @@ class PlantDeviceDataServiceTest {
     private final DeviceStateDocumentMapper mapper = Mappers.getMapper(DeviceStateDocumentMapper.class);
     private final PlantDeviceDataService service =
             new PlantDeviceDataService(states, mock(DiagnosticHistoryRepository.class), mapper,
-                    Mappers.getMapper(DeviceSummaryMapper.class));
+                    Mappers.getMapper(DeviceSummaryMapper.class), Mappers.getMapper(DeviceRegistrationMapper.class));
 
     @Test
     void exposesProcessingRegistrationHistoryAndListingEntrypoints() throws Exception {
@@ -63,7 +64,11 @@ class PlantDeviceDataServiceTest {
                 Mono.just(invocation.getArgument(0, DeviceStateDocument.class)));
 
         StepVerifier.create(service.registerDevice(observation.getDeviceId(), "  Balcony Arduino  "))
-                .expectComplete().verify(Duration.ofSeconds(1));
+                .assertNext(response -> {
+                    assertThat(response.getDeviceId()).isEqualTo(observation.getDeviceId());
+                    assertThat(response.getName()).isEqualTo("Balcony Arduino");
+                    assertThat(response.getState().getValue()).isEqualTo("REGISTERED");
+                }).expectComplete().verify(Duration.ofSeconds(1));
 
         for (var state : List.of(mockState, realState)) {
             verify(states).save(state);

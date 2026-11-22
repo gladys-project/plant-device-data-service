@@ -104,6 +104,11 @@ class DeviceRepositoriesIT {
                 new DeviceStateDocument(unrelated, observation(otherId, true), Instant.EPOCH, null));
 
         var registered = states.insert(initial).then(service.registerDevice(id, "Balcony Arduino"))
+                .doOnNext(response -> {
+                    assertThat(response.getDeviceId()).isEqualTo(id);
+                    assertThat(response.getName()).isEqualTo("Balcony Arduino");
+                    assertThat(response.getState().getValue()).isEqualTo("REGISTERED");
+                })
                 .then(Mono.zip(states.findById(real), states.findById(mock), states.findById(unrelated)));
 
         StepVerifier.create(registered).assertNext(result -> {

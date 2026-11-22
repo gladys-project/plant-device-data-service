@@ -1,0 +1,45 @@
+openapi: 3.1.2
+info:
+  title: Plant Device Data API
+  version: 1.0.0
+tags:
+  - name: Devices
+paths:
+  /devices:
+    get:
+      tags: [Devices]
+      operationId: listDevices
+      summary: List stored device entries
+      description: Includes unnamed devices and both real and mock entries. Returns an empty array when no devices have been saved.
+      responses:
+        '200':
+          description: Stored device entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceSummary'
+components:
+  schemas:
+    DeviceSummary:
+      type: object
+      additionalProperties: false
+      required: [deviceId, mock, state, lastSeenAt]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        mock:
+          type: boolean
+          description: Distinguishes a mock entry from the real entry with the same device UUID.
+        name:
+          type: [string, 'null']
+          description: The user-assigned name, if set.
+        state:
+          type: string
+          enum: [UNNAMED, PENDING, REGISTERED]
+        lastSeenAt:
+          type: string
+          format: date-time
+          description: Server time recorded on the stored entry.

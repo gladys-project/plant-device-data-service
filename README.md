@@ -8,7 +8,7 @@ Includes WebFlux/Actuator, Spring Cloud Stream's Kafka binder, reactive MongoDB 
 
 [kafka-device-data.yml](src/main/resources/openapi/kafka-device-data.yml) is an OpenAPI 3.1.2 definition matching the device-data-processor's outbound `KafkaDeviceData` v1. It is self-contained, including `DeviceError`; no sibling checkout is required. The [example](src/main/resources/openapi/examples/kafka-device-data.json) preserves the original observation metadata, device ID, battery and errors. Sensor measurements remain on the upstream raw telemetry path and are absent from this message.
 
-OpenAPI Generator creates `KafkaDeviceData` and `DeviceError` in `com.gladys.plantdevice.message` during `generate-sources`, under ignored `target/`. Jakarta constraints are generated from the schema; a future handler must invoke validation when processing. Models and validation metadata are compiled into the JAR. No APIs/controllers or outbound models are generated. `KafkaDeviceDataMapper` maps the generated input to a mutable internal `DeviceData` class, preserving every field and copying diagnostics into an immutable list of records. Strict unmapped-source/target checks catch contract drift during compilation. The generated schema-version enum is converted using its numeric value, preserving `1`. This model has no MongoDB entity annotation or persistence behavior; there is no active code invoking the mapper on broker records yet.
+OpenAPI Generator creates `KafkaDeviceData` and `DeviceError` in `com.gladys.plantdevice.message` during `generate-sources`, under ignored `target/`. Jakarta constraints are generated from the schema; a future handler must invoke validation when processing. Models and validation metadata are compiled into the JAR. The Kafka definition generates inbound models only. `KafkaDeviceDataMapper` maps the generated input to a mutable internal `DeviceData` class, preserving every field and copying diagnostics into an immutable list of records. Strict unmapped-source/target checks catch contract drift during compilation. The generated schema-version enum is converted using its numeric value, preserving `1`. This model has no MongoDB entity annotation or persistence behavior; there is no active code invoking the mapper on broker records yet.
 
 The inbound mapper leaves the optional `DeviceData.name` unset and initializes the observation to `State.UNNAMED`. The service uses that initial state when it creates the first document for a device identity. A reader can display **Unnamed device** when no name has been assigned.
 
@@ -60,6 +60,16 @@ The service looks up the identity using both `deviceId` and `mock`. For a new id
 `registerDevice(deviceId, name)` sets or changes the name for every stored entry matching the device UUID and sets its registration state to `REGISTERED`. It trims the name and reports an unknown UUID as an error. The API layer is responsible for request validation. Mock and real observations keep their own stored entries.
 
 `diagnosticHistoryDocument(deviceId, size)` reads the requested number of most recent diagnostic entries for the real device.
+
+## Device list REST contract
+
+[`devices-api.yml`](src/main/resources/openapi/devices-api.yml) defines `GET /devices`. A successful response is a JSON array of stored device summaries with the UUID, mock flag, optional name, state, and last-seen time. An empty store returns `[]`. Mock and real entries are listed separately.
+
+Maven generates `DevicesApi`, `DevicesApiDelegate`, `DevicesApiController`, and `DeviceSummary` under `target/generated-sources/devices-api` during `generate-sources`. Spring registers the generated controller at runtime. The delegate returns the summaries from `PlantDeviceDataService.listDevices()`. The service reads the stored entries and maps them with `DeviceSummaryMapper`.
+
+```bash
+curl --fail http://localhost:8082/devices
+```
 
 ## Configuration and startup
 

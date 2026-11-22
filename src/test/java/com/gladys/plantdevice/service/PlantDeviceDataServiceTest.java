@@ -9,6 +9,7 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 
 import com.gladys.plantdevice.mapping.DeviceStateDocumentMapper;
+import com.gladys.plantdevice.mapping.DeviceSummaryMapper;
 import com.gladys.plantdevice.model.DeviceData;
 import com.gladys.plantdevice.model.State;
 import com.gladys.plantdevice.persistence.model.DeviceIdentity;
@@ -33,15 +34,16 @@ class PlantDeviceDataServiceTest {
     private final DeviceStateRepository states = mock(DeviceStateRepository.class);
     private final DeviceStateDocumentMapper mapper = Mappers.getMapper(DeviceStateDocumentMapper.class);
     private final PlantDeviceDataService service =
-            new PlantDeviceDataService(states, mock(DiagnosticHistoryRepository.class), mapper);
+            new PlantDeviceDataService(states, mock(DiagnosticHistoryRepository.class), mapper,
+                    Mappers.getMapper(DeviceSummaryMapper.class));
 
     @Test
-    void exposesProcessingRegistrationAndHistoryEntrypoints() throws Exception {
+    void exposesProcessingRegistrationHistoryAndListingEntrypoints() throws Exception {
         var methods = Arrays.stream(PlantDeviceDataService.class.getDeclaredMethods())
                 .filter(method -> !method.isSynthetic()).toList();
         assertThat(methods.stream().filter(method -> Modifier.isPublic(method.getModifiers()))
                 .map(method -> method.getName()))
-                .containsExactlyInAnyOrder("processDeviceData", "registerDevice", "diagnosticHistoryDocument");
+                .containsExactlyInAnyOrder("processDeviceData", "registerDevice", "diagnosticHistoryDocument", "listDevices");
         assertThat(methods.stream().filter(method -> !Modifier.isPublic(method.getModifiers())))
                 .allSatisfy(method -> assertThat(Modifier.isPrivate(method.getModifiers())).isTrue());
         assertThat(PlantDeviceDataService.class.getMethod("processDeviceData", DeviceData.class).getReturnType())

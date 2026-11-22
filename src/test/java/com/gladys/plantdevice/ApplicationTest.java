@@ -44,6 +44,11 @@ class ApplicationTest {
     }
 
     @Test
+    void registersTheDeviceListDelegate() {
+        assertThat(context.getBeansOfType(com.gladys.plantdevice.api.DevicesApiDelegate.class)).hasSize(1);
+    }
+
+    @Test
     void usesStandardReactiveMongoAndKafkaInfrastructureWithoutBusinessHandlers() {
         assertThat(context.getBeansOfType(ReactiveMongoTemplate.class)).hasSize(1);
         assertThat(context.getBeansOfType(MongoClient.class)).hasSize(1);

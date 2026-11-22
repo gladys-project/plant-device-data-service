@@ -17,6 +17,17 @@ public interface DeviceSummaryMapper {
     @Mapping(target = "mock", source = "id.mock")
     @Mapping(target = "name", source = "latestObservation.name")
     @Mapping(target = "state", source = "latestObservation.state", defaultValue = "UNNAMED")
+    @Mapping(target = "schemaVersion", source = "latestObservation.schemaVersion")
+    @Mapping(target = "eventId", source = "latestObservation.eventId")
+    @Mapping(target = "eventType", source = "latestObservation.eventType")
+    @Mapping(target = "bootId", source = "latestObservation.bootId")
+    @Mapping(target = "sequence", source = "latestObservation.sequence")
+    @Mapping(target = "uptimeMs", source = "latestObservation.uptimeMs")
+    @Mapping(target = "observedAt", source = "latestObservation.observedAt")
+    @Mapping(target = "clockSource", source = "latestObservation.clockSource")
+    @Mapping(target = "batteryLevelPct", source = "latestObservation.batteryLevelPct")
+    @Mapping(target = "supplyVoltageMv", source = "latestObservation.supplyVoltageMv")
+    @Mapping(target = "errors", source = "latestObservation.errors")
     DeviceSummary toSummary(DeviceStateDocument document);
 
     default OffsetDateTime toUtc(Instant timestamp) {

@@ -65,7 +65,7 @@ The service looks up the identity using both `deviceId` and `mock`. For a new id
 
 ## Device REST contracts
 
-[`devices-api.yml`](src/main/resources/openapi/devices-api.yml) defines `GET /devices`. A successful response is a JSON array of stored device summaries with the UUID, mock flag, optional name, state, and last-seen time. An empty store returns `[]`. Mock and real entries are listed separately.
+[`devices-api.yml`](src/main/resources/openapi/devices-api.yml) defines `GET /devices`. A successful response is a JSON array containing the stored device identity, mock flag, name, registration state, server-side `lastSeenAt`, document `version` and every latest-observation field. These include `schemaVersion`, `eventId`, `eventType`, `bootId`, `sequence`, `uptimeMs`, `observedAt`, `clockSource`, optional `batteryLevelPct` and `supplyVoltageMv`, and the complete `errors` array with diagnostic code, component, severity and message. `observedAt` uses Unix epoch milliseconds; `lastSeenAt` uses UTC date-time text. Metadata fields are optional for historical documents with incomplete observations. An empty store returns `[]`. Mock and real entries are listed separately. Sensor measurements travel through the telemetry data path.
 
 Maven generates `DevicesApi`, `DevicesApiDelegate`, `DevicesApiController`, and `DeviceSummary` under `target/generated-sources/devices-api` during `generate-sources`. Spring registers the generated controller at runtime. The delegate returns the summaries from `PlantDeviceDataService.listDevices()`. The service reads the stored entries and maps them with `DeviceSummaryMapper`.
 

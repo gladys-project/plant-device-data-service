@@ -3,6 +3,7 @@ package com.gladys.plantdevice.api;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.Map;
+import java.util.List;
 
 import com.gladys.plantdevice.mapping.DeviceRegistrationMapperImpl;
 import com.gladys.plantdevice.mapping.DeviceStateDocumentMapperImpl;
@@ -63,6 +64,75 @@ class DevicesApiTest {
                 .jsonPath("$[1].mock").isEqualTo(true)
                 .jsonPath("$[1].name").doesNotExist()
                 .jsonPath("$[1].state").isEqualTo("UNNAMED");
+    }
+
+    @Test
+    void listsAllStoredObservationFieldsAndTheDocumentVersion() {
+        var id = UUID.randomUUID();
+        var eventId = UUID.randomUUID();
+        var bootId = UUID.randomUUID();
+        var observation = new DeviceData();
+        observation.setSchemaVersion(1);
+        observation.setDeviceId(id);
+        observation.setEventId(eventId);
+        observation.setEventType("SOIL_MOISTURE_READING");
+        observation.setBootId(bootId);
+        observation.setSequence(23L);
+        observation.setUptimeMs(28500L);
+        observation.setObservedAt(1794164428500L);
+        observation.setClockSource("MANUAL_TEST");
+        observation.setMock(false);
+        observation.setName("Balcony Arduino");
+        observation.setState(State.REGISTERED);
+        observation.setBatteryLevelPct(10);
+        observation.setSupplyVoltageMv(4750);
+        observation.setErrors(List.of(new DeviceData.Diagnostic(
+                "LOW_BATTERY", "BATTERY", "ERROR", "Battery below threshold.")));
+        var seenAt = Instant.parse("2026-11-21T10:15:30Z");
+        var document = new DeviceStateDocument(new DeviceIdentity(id, false), observation, seenAt, 2L);
+        when(states.findAll()).thenReturn(Flux.just(document));
+
+        web.get().uri("/devices").accept(MediaType.APPLICATION_JSON).exchange()
+                .expectStatus().isOk().expectBody()
+                .jsonPath("$[0].deviceId").isEqualTo(id.toString())
+                .jsonPath("$[0].mock").isEqualTo(false)
+                .jsonPath("$[0].name").isEqualTo("Balcony Arduino")
+                .jsonPath("$[0].state").isEqualTo("REGISTERED")
+                .jsonPath("$[0].lastSeenAt").isEqualTo(seenAt.toString())
+                .jsonPath("$[0].version").isEqualTo(2)
+                .jsonPath("$[0].schemaVersion").isEqualTo(1)
+                .jsonPath("$[0].eventId").isEqualTo(eventId.toString())
+                .jsonPath("$[0].eventType").isEqualTo("SOIL_MOISTURE_READING")
+                .jsonPath("$[0].bootId").isEqualTo(bootId.toString())
+                .jsonPath("$[0].sequence").isEqualTo(23)
+                .jsonPath("$[0].uptimeMs").isEqualTo(28500)
+                .jsonPath("$[0].observedAt").isEqualTo(1794164428500L)
+                .jsonPath("$[0].clockSource").isEqualTo("MANUAL_TEST")
+                .jsonPath("$[0].batteryLevelPct").isEqualTo(10)
+                .jsonPath("$[0].supplyVoltageMv").isEqualTo(4750)
+                .jsonPath("$[0].errors.length()").isEqualTo(1)
+                .jsonPath("$[0].errors[0].code").isEqualTo("LOW_BATTERY")
+                .jsonPath("$[0].errors[0].component").isEqualTo("BATTERY")
+                .jsonPath("$[0].errors[0].severity").isEqualTo("ERROR")
+                .jsonPath("$[0].errors[0].message").isEqualTo("Battery below threshold.");
+    }
+
+    @Test
+    void listsHistoricalDocumentsWithMissingObservationMetadata() {
+        var id = UUID.randomUUID();
+        var seenAt = Instant.parse("2026-11-21T10:15:30Z");
+        var document = new DeviceStateDocument(new DeviceIdentity(id, false), null, seenAt, null);
+        when(states.findAll()).thenReturn(Flux.just(document));
+
+        web.get().uri("/devices").accept(MediaType.APPLICATION_JSON).exchange()
+                .expectStatus().isOk().expectBody()
+                .jsonPath("$[0].deviceId").isEqualTo(id.toString())
+                .jsonPath("$[0].mock").isEqualTo(false)
+                .jsonPath("$[0].state").isEqualTo("UNNAMED")
+                .jsonPath("$[0].lastSeenAt").isEqualTo(seenAt.toString())
+                .jsonPath("$[0].eventId").doesNotExist()
+                .jsonPath("$[0].batteryLevelPct").doesNotExist()
+                .jsonPath("$[0].supplyVoltageMv").doesNotExist();
     }
 
     @Test

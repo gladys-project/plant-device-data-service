@@ -10,7 +10,7 @@ paths:
       tags: [Devices]
       operationId: listDevices
       summary: List stored device entries
-      description: Includes unnamed devices and both real and mock entries. Returns an empty array when no devices have been saved.
+      description: Includes all stored latest-observation fields, registration details, server receipt time and document version for real and mock entries. Returns an empty array when no devices have been saved.
       responses:
         '200':
           description: Stored device entries
@@ -90,6 +90,7 @@ components:
     DeviceSummary:
       type: object
       additionalProperties: false
+      description: Latest stored device observation and registration details. Observation fields are optional for older documents with incomplete metadata.
       required: [deviceId, mock, state, lastSeenAt]
       properties:
         deviceId:
@@ -108,3 +109,62 @@ components:
           type: string
           format: date-time
           description: Server time recorded on the stored entry.
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Stored document revision used for optimistic locking.
+        schemaVersion:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 1
+          description: Version of the original device message schema.
+        eventId:
+          type: string
+          format: uuid
+          description: Identity of the latest stored event.
+        eventType:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+        bootId:
+          type: string
+          format: uuid
+          description: Device boot session for the observation.
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        uptimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Device uptime in milliseconds at observation.
+        observedAt:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Device-reported observation time as Unix epoch milliseconds.
+        clockSource:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Clock provenance reported by the device.
+        batteryLevelPct:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Battery charge percentage when available.
+        supplyVoltageMv:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Estimated device-board supply rail voltage in millivolts when available.
+        errors:
+          type: array
+          description: Diagnostics reported with the latest stored observation.
+          items:
+            $ref: './kafka-device-data.yml#/components/schemas/DeviceError'

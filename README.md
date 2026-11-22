@@ -63,7 +63,7 @@ The service looks up the identity using both `deviceId` and `mock`. For a new id
 
 `diagnosticHistoryDocument(deviceId, size)` reads the requested number of most recent diagnostic entries for the real device.
 
-## Device list REST contract
+## Device REST contracts
 
 [`devices-api.yml`](src/main/resources/openapi/devices-api.yml) defines `GET /devices`. A successful response is a JSON array of stored device summaries with the UUID, mock flag, optional name, state, and last-seen time. An empty store returns `[]`. Mock and real entries are listed separately.
 
@@ -72,6 +72,27 @@ Maven generates `DevicesApi`, `DevicesApiDelegate`, `DevicesApiController`, and 
 ```bash
 curl --fail http://localhost:8082/devices
 ```
+
+`POST /register` accepts a required JSON body containing the UUID of an already observed device and a nonblank name.
+
+```json
+{
+  "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Balcony Arduino"
+}
+```
+
+The endpoint returns `200` after all matching entries are saved. The JSON response contains the device UUID, the trimmed saved name and its registration state.
+
+```json
+{
+  "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Balcony Arduino",
+  "state": "REGISTERED"
+}
+```
+
+Invalid input returns `400`, an unknown device returns `404` and persistence failures propagate as server errors. Registration applies to stored real and mock entries sharing the UUID. Maven generates `DeviceRegistrationRequest`, `DeviceRegistrationResponse` and the reactive API/delegate method. The service maps the response using `DeviceRegistrationMapper`; the delegate calls the service and builds the HTTP response.
 
 ## Configuration and startup
 

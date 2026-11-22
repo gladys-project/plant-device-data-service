@@ -5,6 +5,8 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 
 import com.gladys.plantdevice.api.model.DeviceSummary;
+import com.gladys.plantdevice.api.model.DeviceRegistrationResponse;
+import com.gladys.plantdevice.mapping.DeviceRegistrationMapper;
 import com.gladys.plantdevice.mapping.DeviceStateDocumentMapper;
 import com.gladys.plantdevice.mapping.DeviceSummaryMapper;
 import com.gladys.plantdevice.model.DeviceData;
@@ -29,6 +31,7 @@ public class PlantDeviceDataService {
     private final DiagnosticHistoryRepository diagnosticHistoryRepository;
     private final DeviceStateDocumentMapper documentMapper;
     private final DeviceSummaryMapper summaryMapper;
+    private final DeviceRegistrationMapper registrationMapper;
 
     /** Creates current state for a device identity when it is first observed. */
     public Mono<Void> processDeviceData(DeviceData data) {
@@ -49,7 +52,7 @@ public class PlantDeviceDataService {
                 .findByDeviceOrderByRecordedAtDescIdAsc(deviceIdentity, Pageable.ofSize(size));
     }
 
-    public Mono<Void> registerDevice(UUID deviceId, String name) {
+    public Mono<DeviceRegistrationResponse> registerDevice(UUID deviceId, String name) {
         var deviceName = name.strip();
         return deviceStateRepository.findAllById_DeviceId(deviceId)
                 .switchIfEmpty(Mono.error(() -> new NoSuchElementException("Device not found: " + deviceId)))
@@ -59,7 +62,7 @@ public class PlantDeviceDataService {
                     observation.setState(State.REGISTERED);
                     return deviceStateRepository.save(document);
                 })
-                .then();
+                .then(Mono.fromSupplier(() -> registrationMapper.toResponse(deviceId, deviceName)));
     }
 
     public Flux<DeviceSummary> listDevices() {

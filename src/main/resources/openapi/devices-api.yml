@@ -20,8 +20,73 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/DeviceSummary'
+  /register:
+    post:
+      tags: [Devices]
+      operationId: registerDevice
+      summary: Register or rename an observed device
+      description: |
+        Assigns a name and REGISTERED state to existing entries identified by
+        deviceId, including both real and mock entries. Repeating this request
+        can rename a device. The device must already have a stored observation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRegistrationRequest'
+            example:
+              deviceId: 550e8400-e29b-41d4-a716-446655440000
+              name: Balcony Arduino
+      responses:
+        '200':
+          description: Device registered or renamed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceRegistrationResponse'
+              example:
+                deviceId: 550e8400-e29b-41d4-a716-446655440000
+                name: Balcony Arduino
+                state: REGISTERED
+        '400':
+          description: Missing or invalid request body, device UUID or name.
+        '404':
+          description: No stored device entries exist for the supplied deviceId.
 components:
   schemas:
+    DeviceRegistrationResponse:
+      type: object
+      additionalProperties: false
+      required: [deviceId, name, state]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+          description: UUID of the registered device.
+        name:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
+          description: Saved name with leading and trailing whitespace removed.
+        state:
+          type: string
+          enum: [REGISTERED]
+          description: Registration state after the operation completes.
+    DeviceRegistrationRequest:
+      type: object
+      additionalProperties: false
+      required: [deviceId, name]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+          description: UUID of an already observed device.
+        name:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
+          description: User-assigned name containing at least one non-whitespace character.
     DeviceSummary:
       type: object
       additionalProperties: false

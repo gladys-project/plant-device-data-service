@@ -39,8 +39,7 @@ public class PlantDeviceDataListener {
     private Mono<Void> processMessage(Message<String> message) {
         var rawDeviceData = extractData(message);
         var deviceDAta = kafkaDeviceDataMapper.toDeviceData(rawDeviceData);
-        service.processDeviceData(deviceDAta);
-        return Mono.empty();
+        return service.processDeviceData(deviceDAta);
     }
 
     private void sendToDlq(Message<String> message, Throwable error) {

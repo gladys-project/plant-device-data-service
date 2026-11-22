@@ -121,6 +121,36 @@ class DeviceRepositoriesIT {
     }
 
     @Test
+    void incomingObservationsInsertThenUpdateTheRegisteredDevice() throws Exception {
+        var id = UUID.randomUUID();
+        var identity = new DeviceIdentity(id, false);
+        var initial = observation(id, false);
+        var incoming = observation(id, false);
+        incoming.setEventId(UUID.randomUUID());
+        incoming.setObservedAt(initial.getObservedAt() + 1000);
+        incoming.setBatteryLevelPct(42);
+
+        var updated = service.processDeviceData(initial)
+                .then(service.registerDevice(id, "Balcony Arduino"))
+                .then(states.findById(identity))
+                .flatMap(before -> service.processDeviceData(incoming)
+                        .then(states.findById(identity))
+                        .doOnNext(after -> {
+                            assertThat(after.getVersion()).isEqualTo(before.getVersion() + 1);
+                            assertThat(after.getLastSeenAt()).isAfterOrEqualTo(before.getLastSeenAt());
+                        }));
+
+        StepVerifier.create(updated).assertNext(saved -> {
+            assertThat(saved.getId()).isEqualTo(identity);
+            assertThat(saved.getLatestObservation().getEventId()).isEqualTo(incoming.getEventId());
+            assertThat(saved.getLatestObservation().getObservedAt()).isEqualTo(incoming.getObservedAt());
+            assertThat(saved.getLatestObservation().getBatteryLevelPct()).isEqualTo(42);
+            assertThat(saved.getLatestObservation().getName()).isEqualTo("Balcony Arduino");
+            assertThat(saved.getLatestObservation().getState()).isEqualTo(State.REGISTERED);
+        }).expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
     void aStaleStateSaveCannotOverwriteANewerVersion() throws Exception {
         var id = UUID.randomUUID();
         var identity = new DeviceIdentity(id, false);

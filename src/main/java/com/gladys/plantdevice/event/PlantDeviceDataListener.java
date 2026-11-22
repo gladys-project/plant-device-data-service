@@ -5,6 +5,7 @@ import com.gladys.plantdevice.message.KafkaDeviceData;
 import com.gladys.plantdevice.service.PlantDeviceDataService;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Bean;
 import org.springframework.messaging.Message;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -23,6 +24,7 @@ public class PlantDeviceDataListener {
     private final KafkaDeviceDataMapper kafkaDeviceDataMapper;
     private final PlantDeviceDataService service;
 
+    @Bean
     public Function<Flux<Message<String>>, Mono<Void>> onDeviceDataEvent() {
         return data -> data
                 .flatMap(msg -> processMessage(msg)
@@ -37,6 +39,7 @@ public class PlantDeviceDataListener {
     private Mono<Void> processMessage(Message<String> message) {
         var rawDeviceData = extractData(message);
         var deviceDAta = kafkaDeviceDataMapper.toDeviceData(rawDeviceData);
+        service.processDeviceData(deviceDAta);
         return Mono.empty();
     }
 

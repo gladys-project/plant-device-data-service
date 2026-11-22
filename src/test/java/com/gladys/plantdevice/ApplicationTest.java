@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.cloud.stream.binding.BindingService;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
@@ -49,15 +50,17 @@ class ApplicationTest {
     }
 
     @Test
-    void usesStandardReactiveMongoAndKafkaInfrastructureWithoutBusinessHandlers() {
+    void usesStandardReactiveMongoAndKafkaInfrastructureWithAnUnboundListener() {
         assertThat(context.getBeansOfType(ReactiveMongoTemplate.class)).hasSize(1);
         assertThat(context.getBeansOfType(MongoClient.class)).hasSize(1);
         assertThat(context.getBeansOfType(KafkaTemplate.class)).hasSize(1);
         assertThat(context.getBeansOfType(com.gladys.plantdevice.mapping.KafkaDeviceDataMapper.class)).hasSize(1);
         assertThat(context.getBeansOfType(org.apache.kafka.clients.admin.NewTopic.class)).isEmpty();
         assertThat(context.getBeansOfType(org.springframework.data.mongodb.core.MongoTemplate.class)).isEmpty();
-        assertThat(context.getBeansOfType(java.util.function.Function.class).values()).allSatisfy(function ->
-                assertThat(function.getClass().getPackageName()).doesNotStartWith("com.gladys.plantdevice"));
+        assertThat(context.getBean("onDeviceDataEvent")).isInstanceOf(java.util.function.Function.class);
+        var bindings = context.getBean(BindingService.class);
+        assertThat(bindings.getConsumerBindingNames()).isEmpty();
+        assertThat(bindings.getProducerBindingNames()).isEmpty();
         assertThat(context.getBean(org.springframework.kafka.config.KafkaListenerEndpointRegistry.class)
                 .getListenerContainers()).isEmpty();
         assertThat(context.getClass().getSimpleName()).contains("ReactiveWebServer");

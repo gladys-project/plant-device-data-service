@@ -4,6 +4,10 @@ spring:
     import: classpath:application.yml
 ---
 spring:
+  cloud:
+    function:
+      # Binding creation can contact Kafka even when consumer auto-startup is disabled.
+      definition: ''
   kafka:
     bootstrap-servers: 127.0.0.1:1
   mongodb:

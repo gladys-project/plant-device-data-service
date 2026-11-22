@@ -1,5 +1,6 @@
 package com.gladys.plantdevice.model;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -17,7 +18,7 @@ public class DeviceData {
     private UUID bootId;
     private Long sequence;
     private Long uptimeMs;
-    private Long observedAt;
+    private long observedAt;
     private String clockSource;
     private Boolean mock;
     private Integer batteryLevelPct;

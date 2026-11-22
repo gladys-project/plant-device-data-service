@@ -62,6 +62,12 @@ spring:
   config:
     activate:
       on-profile: deployed
+  cloud:
+    stream:
+      bindings:
+        onDeviceDataEvent-in-0:
+          consumer:
+            auto-startup: true
 management:
   health:
     mongodb:

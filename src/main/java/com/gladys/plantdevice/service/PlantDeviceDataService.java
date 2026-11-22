@@ -34,6 +34,7 @@ public class PlantDeviceDataService {
     public Mono<Void> processDeviceData(DeviceData data) {
         var identity = documentMapper.toIdentity(data);
         return deviceStateRepository.findById(identity)
+                .flatMap(deviceStateDocument -> updateIncomingData(deviceStateDocument, data))
                 .switchIfEmpty(Mono.defer(() -> persistIncomingData(data)))
                 .then();
     }
@@ -66,10 +67,30 @@ public class PlantDeviceDataService {
                 .map(summaryMapper::toSummary);
     }
 
+    private Mono<DeviceStateDocument> updateIncomingData(DeviceStateDocument data, DeviceData incomingData) {
+        log.info("Device updated with id: {}", data.getId());
+        var state = data.getLatestObservation().getState();
+        var name = data.getLatestObservation().getName();
+        checkStaleData(data, incomingData);
+        incomingData.setState(state);
+        incomingData.setName(name);
+        data.setLatestObservation(incomingData);
+        data.setLastSeenAt(Instant.now());
+        return deviceStateRepository.save(data);
+    }
+
+
     private Mono<DeviceStateDocument> persistIncomingData(DeviceData data) {
         var deviceDocument = documentMapper.toDocument(data, Instant.now(), null);
         log.info("Device saved with id: {}", data.getDeviceId());
         return deviceStateRepository.save(deviceDocument);
+    }
+
+    private void checkStaleData(DeviceStateDocument data, DeviceData incomingData){
+        if(Instant.ofEpochMilli(data.getLatestObservation().getObservedAt())
+                .isAfter(Instant.ofEpochMilli(incomingData.getObservedAt()))){
+            throw new RuntimeException("Stale device entry");
+        }
     }
 
 }

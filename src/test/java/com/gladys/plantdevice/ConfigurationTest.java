@@ -72,13 +72,13 @@ class ConfigurationTest {
     }
 
     @Test
-    void deployedProfileChecksMongoHealthButDoesNotActivateMissingCoreLogic() {
+    void deployedProfileChecksMongoHealthAndStartsDeviceDataConsumption() {
         runner.withPropertyValues("spring.profiles.active=deployed").run(ctx -> {
             assertThat(ctx).hasNotFailed();
             assertThat(ctx.getEnvironment().getProperty("management.health.mongodb.enabled", Boolean.class)).isTrue();
             assertThat(ctx.getBean(FunctionProperties.class).getDefinition()).isEqualTo("onDeviceDataEvent");
             assertThat(ctx.getBean(BindingServiceProperties.class).getConsumerProperties("onDeviceDataEvent-in-0").isAutoStartup())
-                    .isFalse();
+                    .isTrue();
         });
     }
 

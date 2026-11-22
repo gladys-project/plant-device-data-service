@@ -4,7 +4,9 @@ import java.time.Instant;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
+import com.gladys.plantdevice.api.model.DeviceSummary;
 import com.gladys.plantdevice.mapping.DeviceStateDocumentMapper;
+import com.gladys.plantdevice.mapping.DeviceSummaryMapper;
 import com.gladys.plantdevice.model.DeviceData;
 import com.gladys.plantdevice.model.State;
 import com.gladys.plantdevice.persistence.model.DeviceIdentity;
@@ -26,6 +28,7 @@ public class PlantDeviceDataService {
     private final DeviceStateRepository deviceStateRepository;
     private final DiagnosticHistoryRepository diagnosticHistoryRepository;
     private final DeviceStateDocumentMapper documentMapper;
+    private final DeviceSummaryMapper summaryMapper;
 
     /** Creates current state for a device identity when it is first observed. */
     public Mono<Void> processDeviceData(DeviceData data) {
@@ -56,6 +59,11 @@ public class PlantDeviceDataService {
                     return deviceStateRepository.save(document);
                 })
                 .then();
+    }
+
+    public Flux<DeviceSummary> listDevices() {
+        return deviceStateRepository.findAll()
+                .map(summaryMapper::toSummary);
     }
 
     private Mono<DeviceStateDocument> persistIncomingData(DeviceData data) {

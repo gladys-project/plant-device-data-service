@@ -34,7 +34,20 @@ class KafkaDeviceDataMapperTest {
         var expected = (ObjectNode) json.readTree(json.writeValueAsString(source));
         expected.putNull("name");
         expected.put("state", "UNNAMED");
+        expected.putNull("supplyVoltageMv");
         assertThat(json.readTree(json.writeValueAsString(target))).isEqualTo(expected);
+    }
+
+    @Test
+    void preservesMeasuredSupplyWithoutABatteryPercentage() throws Exception {
+        var input = inbound();
+        input.setBatteryLevelPct(null);
+        input.setSupplyVoltageMv(4750);
+
+        var observation = mapper.toDeviceData(input);
+
+        assertThat(observation.getBatteryLevelPct()).isNull();
+        assertThat(observation.getSupplyVoltageMv()).isEqualTo(4750);
     }
 
     @Test

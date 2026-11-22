@@ -21,6 +21,7 @@ public class DeviceData {
     private String clockSource;
     private Boolean mock;
     private Integer batteryLevelPct;
+    private Integer supplyVoltageMv;
     private List<Diagnostic> errors;
 
     public void setErrors(List<Diagnostic> errors) {

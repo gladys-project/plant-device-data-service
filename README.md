@@ -2,30 +2,32 @@
 
 Java 25 configuration skeleton for Gladys device data. The Maven artifact, application, image and Compose service are named `plant-device-data-service`; the checkout folder is currently `device-data-service`.
 
-Includes WebFlux/Actuator, Spring Cloud Stream's Kafka binder, reactive MongoDB auto-configuration, generated inbound DTOs, Lombok/SLF4J, Maven Wrapper and infrastructure tests. The service can create a current-state document for the first observation of a device identity. The Kafka listener remains inactive.
+Includes WebFlux/Actuator, Spring Cloud Stream's Kafka binder, reactive MongoDB auto-configuration, generated inbound DTOs, Lombok/SLF4J, Maven Wrapper and infrastructure tests. The service can create a current-state document for the first observation of a device identity. Kafka consumption starts under the `deployed` profile.
 
 ## Inbound contract and bindings
 
 [kafka-device-data.yml](src/main/resources/openapi/kafka-device-data.yml) is an OpenAPI 3.1.2 definition matching the device-data-processor's outbound `KafkaDeviceData` v1. It is self-contained, including `DeviceError`; no sibling checkout is required. The [example](src/main/resources/openapi/examples/kafka-device-data.json) preserves the original observation metadata, device ID, battery and errors. Sensor measurements remain on the upstream raw telemetry path and are absent from this message.
 
-OpenAPI Generator creates `KafkaDeviceData` and `DeviceError` in `com.gladys.plantdevice.message` during `generate-sources`, under ignored `target/`. Jakarta constraints are generated from the schema; a future handler must invoke validation when processing. Models and validation metadata are compiled into the JAR. The Kafka definition generates inbound models only. `KafkaDeviceDataMapper` maps the generated input to a mutable internal `DeviceData` class, preserving every field and copying diagnostics into an immutable list of records. Strict unmapped-source/target checks catch contract drift during compilation. The generated schema-version enum is converted using its numeric value, preserving `1`. This model has no MongoDB entity annotation or persistence behavior; there is no active code invoking the mapper on broker records yet.
+OpenAPI Generator creates `KafkaDeviceData` and `DeviceError` in `com.gladys.plantdevice.message` during `generate-sources`, under ignored `target/`. Jakarta constraints are generated from the schema; a future handler must invoke validation when processing. Models and validation metadata are compiled into the JAR. The Kafka definition generates inbound models only. `KafkaDeviceDataMapper` maps the generated input to a mutable internal `DeviceData` class, preserving every field and copying diagnostics into an immutable list of records. Strict unmapped-source/target checks catch contract drift during compilation. The generated schema-version enum is converted using its numeric value, preserving `1`. The listener maps broker records to this internal model and returns the service persistence publisher.
 
 The inbound mapper leaves the optional `DeviceData.name` unset and initializes the observation to `State.UNNAMED`. The service uses that initial state when it creates the first document for a device identity. A reader can display **Unnamed device** when no name has been assigned.
 
 | Declaration | Default |
 | --- | --- |
-| Future inbound binding | `onDeviceDataEvent-in-0` |
+| Inbound binding | `onDeviceDataEvent-in-0` |
 | Kafka topic | `gladys.device.data.v1` |
 | Consumer group | `gladys.plant-device-data-service.v1` |
 | Intended Kafka key | `deviceId` |
 
-The configured function name is `onDeviceDataEvent`, matching the user-authored listener draft. Autodetection is off and consumer auto-startup is false in every profile; this change does not register or activate a processing function. No outbound binding is declared. There is no Kafka-to-Mongo processing flow yet. Topic provisioning is external; application and binder topic creation/partition additions are disabled.
+The registered function is `onDeviceDataEvent`. Autodetection is off. Consumer auto-startup is false by default and true under the `deployed` profile. Topic provisioning is external; application and binder topic creation/partition additions are disabled.
 
 ## Persistence definitions
 
 The wire DTO and internal `DeviceData` stay free of MongoDB annotations. Persistence models live under `persistence.model`, and Spring Data interfaces under `persistence.repository`. `DeviceStateDocument` is a mutable class with a fixed ID. A caller can edit a loaded document and save it using its existing version.
 
 `DeviceStateDocumentMapper.toDocument(data, receivedAt, version)` builds a state document with a copy of the observation, its mock-aware identity and the supplied server receipt time. Pass `null` as the version for an insert or pass the version loaded from MongoDB for an update.
+
+The service inserts the first observation and updates existing documents with incoming readings, preserving their name, registration state, identity and version. Each accepted update refreshes `lastSeenAt` using server time. Readings with `observedAt` earlier than the stored observation are rejected; equal timestamps are accepted. This ordering assumes a consistent device clock.
 
 | Collection / repository | Stored data and operations |
 | --- | --- |
@@ -116,7 +118,7 @@ docker compose --env-file /etc/gladys/gladys.env config --quiet
 docker compose --env-file /etc/gladys/gladys.env up -d --build
 ```
 
-Compose selects `deployed`, enabling MongoDB health while keeping consumption inactive. The Dockerfile packages only the verified JAR on a pinned Java 25 JRE and runs as UID/GID `10001`. Environment files and source are excluded from the image build context.
+Compose selects `deployed`, enabling MongoDB health and inbound Kafka consumption. The Dockerfile packages only the verified JAR on a pinned Java 25 JRE and runs as UID/GID `10001`. Environment files and source are excluded from the image build context.
 
 ## CI, deployment and releases
 

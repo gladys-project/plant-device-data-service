@@ -17,6 +17,8 @@ import com.gladys.plantdevice.persistence.model.DeviceStateDocument;
 import com.gladys.plantdevice.persistence.repository.DeviceStateRepository;
 import com.gladys.plantdevice.persistence.repository.DiagnosticHistoryRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import reactor.core.publisher.Flux;
@@ -116,16 +118,66 @@ class PlantDeviceDataServiceTest {
         assertThat(document.getValue().getVersion()).isNull();
     }
 
-    @Test
-    void skipsTheInsertWhenTheDeviceAlreadyExists() {
+    @ParameterizedTest
+    @ValueSource(longs = {1000, 2000})
+    void updatesAnExistingDeviceAndPreservesItsRegistration(long observedAt) {
         var observation = observation();
-        var existing = mapper.toDocument(observation, Instant.EPOCH, 0L);
+        observation.setObservedAt(1000);
+        observation.setName("Balcony Arduino");
+        observation.setState(State.REGISTERED);
+        var existing = mapper.toDocument(observation, Instant.EPOCH, 4L);
+        var incoming = mapper.copyObservation(observation);
+        incoming.setObservedAt(observedAt);
+        incoming.setEventId(UUID.randomUUID());
+        incoming.setBatteryLevelPct(42);
+        incoming.setName(null);
+        incoming.setState(State.UNNAMED);
         when(states.findById(existing.getId())).thenReturn(Mono.just(existing));
+        when(states.save(existing)).thenReturn(Mono.just(existing));
+        var receivedAfter = Instant.now();
 
-        StepVerifier.create(service.processDeviceData(observation))
+        var result = service.processDeviceData(incoming);
+        verify(states, never()).save(any(DeviceStateDocument.class));
+        StepVerifier.create(result)
                 .expectComplete().verify(Duration.ofSeconds(1));
 
+        verify(states).save(existing);
+        assertThat(existing.getLatestObservation().getEventId()).isEqualTo(incoming.getEventId());
+        assertThat(existing.getLatestObservation().getObservedAt()).isEqualTo(observedAt);
+        assertThat(existing.getLatestObservation().getBatteryLevelPct()).isEqualTo(42);
+        assertThat(existing.getLatestObservation().getName()).isEqualTo("Balcony Arduino");
+        assertThat(existing.getLatestObservation().getState()).isEqualTo(State.REGISTERED);
+        assertThat(existing.getLastSeenAt()).isBetween(receivedAfter, Instant.now());
+        assertThat(existing.getVersion()).isEqualTo(4L);
+    }
+
+    @Test
+    void rejectsAnOlderObservationWithoutSaving() {
+        var observation = observation();
+        observation.setObservedAt(2000);
+        var existing = mapper.toDocument(observation, Instant.EPOCH, 4L);
+        var incoming = mapper.copyObservation(observation);
+        incoming.setObservedAt(1000);
+        when(states.findById(existing.getId())).thenReturn(Mono.just(existing));
+
+        StepVerifier.create(service.processDeviceData(incoming))
+                .expectErrorMessage("Stale device entry").verify(Duration.ofSeconds(1));
+
         verify(states, never()).save(any(DeviceStateDocument.class));
+        assertThat(existing.getLatestObservation()).isEqualTo(observation);
+        assertThat(existing.getLastSeenAt()).isEqualTo(Instant.EPOCH);
+    }
+
+    @Test
+    void propagatesAnExistingDeviceSaveFailure() {
+        var observation = observation();
+        var existing = mapper.toDocument(observation, Instant.EPOCH, 4L);
+        var failure = new IllegalStateException("MongoDB update failed");
+        when(states.findById(existing.getId())).thenReturn(Mono.just(existing));
+        when(states.save(existing)).thenReturn(Mono.error(failure));
+
+        StepVerifier.create(service.processDeviceData(observation))
+                .expectErrorMatches(error -> error == failure).verify(Duration.ofSeconds(1));
     }
 
     @Test

@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.List;
 
 import com.gladys.plantdevice.mapping.DeviceRegistrationMapperImpl;
+import com.gladys.plantdevice.api.model.DeviceSummary;
 import com.gladys.plantdevice.mapping.DeviceStateDocumentMapperImpl;
 import com.gladys.plantdevice.mapping.DeviceSummaryMapperImpl;
 import com.gladys.plantdevice.model.DeviceData;
@@ -27,6 +28,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -87,7 +89,7 @@ class DevicesApiTest {
         observation.setBatteryLevelPct(10);
         observation.setSupplyVoltageMv(4750);
         observation.setErrors(List.of(new DeviceData.Diagnostic(
-                "LOW_BATTERY", "BATTERY", "ERROR", "Battery below threshold.")));
+                "BAT_01", "BATTERY", "ERROR", "Battery below threshold.")));
         var seenAt = Instant.parse("2026-11-21T10:15:30Z");
         var document = new DeviceStateDocument(new DeviceIdentity(id, false), observation, seenAt, 2L);
         when(states.findAll()).thenReturn(Flux.just(document));
@@ -111,10 +113,34 @@ class DevicesApiTest {
                 .jsonPath("$[0].batteryLevelPct").isEqualTo(10)
                 .jsonPath("$[0].supplyVoltageMv").isEqualTo(4750)
                 .jsonPath("$[0].errors.length()").isEqualTo(1)
-                .jsonPath("$[0].errors[0].code").isEqualTo("LOW_BATTERY")
+                .jsonPath("$[0].errors[0].code").isEqualTo("BAT_01")
                 .jsonPath("$[0].errors[0].component").isEqualTo("BATTERY")
                 .jsonPath("$[0].errors[0].severity").isEqualTo("ERROR")
                 .jsonPath("$[0].errors[0].message").isEqualTo("Battery below threshold.");
+    }
+
+    @Test
+    void listsDistinctCriticalConditionsAndKeepsHistoricalDiagnosticCodesReadable() {
+        var id = UUID.randomUUID();
+        var observation = new DeviceData();
+        observation.setErrors(List.of(
+                new DeviceData.Diagnostic("SEN_01", "SOIL_SENSOR_A", "CRITICAL", "Sensor read failed."),
+                new DeviceData.Diagnostic("PMP_01", "PUMP_A", "CRITICAL", "Pump activation failed."),
+                new DeviceData.Diagnostic("LOW_BATTERY", "BATTERY", "ERROR", "Historical battery condition.")));
+        var document = new DeviceStateDocument(new DeviceIdentity(id, false), observation, Instant.EPOCH, 1L);
+        when(states.findAll()).thenReturn(Flux.just(document));
+
+        var summaries = web.get().uri("/devices").accept(MediaType.APPLICATION_JSON).exchange()
+                .expectStatus().isOk().expectBody(DeviceSummary[].class).returnResult().getResponseBody();
+
+        assertThat(summaries).hasSize(1);
+        assertThat(summaries[0].getErrors()).extracting(error -> error.getCode())
+                .containsExactly("SEN_01", "PMP_01", "LOW_BATTERY");
+        assertThat(summaries[0].getErrors().get(0).getSeverity().getValue()).isEqualTo("CRITICAL");
+        assertThat(summaries[0].getErrors().get(1).getSeverity().getValue()).isEqualTo("CRITICAL");
+        try (var factory = jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+            assertThat(factory.getValidator().validate(summaries[0])).isEmpty();
+        }
     }
 
     @Test

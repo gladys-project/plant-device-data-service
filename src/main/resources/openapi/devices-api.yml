@@ -87,6 +87,26 @@ components:
           minLength: 1
           pattern: '[\s\S]*\S[\s\S]*'
           description: User-assigned name containing at least one non-whitespace character.
+    StoredDeviceError:
+      type: object
+      additionalProperties: false
+      description: Persisted diagnostic as reported. Historical documents may retain descriptive condition codes used before the compact format.
+      required: [code, component, severity, message]
+      properties:
+        code:
+          type: string
+          pattern: '^(?:[A-Z0-9]{3}_[A-Z0-9]{2}|[A-Z][A-Z0-9_]*)$'
+          description: Original stored condition identifier. New observations use codes such as BAT_01; historical codes are preserved.
+        component:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+        severity:
+          type: string
+          enum: [INFO, WARNING, ERROR, CRITICAL]
+        message:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
     DeviceSummary:
       type: object
       additionalProperties: false
@@ -167,4 +187,4 @@ components:
           type: array
           description: Diagnostics reported with the latest stored observation.
           items:
-            $ref: './kafka-device-data.yml#/components/schemas/DeviceError'
+            $ref: '#/components/schemas/StoredDeviceError'

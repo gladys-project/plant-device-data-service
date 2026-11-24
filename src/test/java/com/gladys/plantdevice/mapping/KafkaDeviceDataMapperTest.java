@@ -76,4 +76,25 @@ class KafkaDeviceDataMapperTest {
         assertThat(target.getEventType()).isEqualTo("SOIL_TEMPERATURE_READING");
         assertThat(source.getEventType()).isEqualTo(target.getEventType());
     }
+
+    @Test
+    void preservesDistinctCriticalConditionsAcrossSuccessiveSnapshots() throws Exception {
+        var observation = (ObjectNode) json.readTree(json.writeValueAsString(inbound()));
+        var errors = observation.putArray("errors");
+        errors.addObject().put("code", "SEN_01").put("component", "SOIL_SENSOR_A")
+                .put("severity", "CRITICAL").put("message", "Sensor read failed.");
+        errors.addObject().put("code", "PMP_01").put("component", "PUMP_A")
+                .put("severity", "CRITICAL").put("message", "Pump activation failed.");
+
+        var first = mapper.toDeviceData(json.treeToValue(observation, KafkaDeviceData.class));
+        assertThat(json.readTree(json.writeValueAsString(first)).get("errors")).isEqualTo(errors);
+
+        errors.remove(0);
+        var next = mapper.toDeviceData(json.treeToValue(observation, KafkaDeviceData.class));
+        var nextErrors = json.readTree(json.writeValueAsString(next)).get("errors");
+        assertThat(nextErrors).isEqualTo(errors);
+        assertThat(nextErrors.size()).isEqualTo(1);
+        assertThat(nextErrors.get(0).get("code").asString()).isEqualTo("PMP_01");
+        assertThat(nextErrors.get(0).get("severity").asString()).isEqualTo("CRITICAL");
+    }
 }

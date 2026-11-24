@@ -177,3 +177,22 @@ Follow [AGENT.md](AGENT.md) for project guidance; [AGENTS.md](AGENTS.md) points 
 Upstream sensor payloads now use UUID `sensorId` and typed `rawMoisture`, `rawMoistureMin`, `rawMoistureMax`, `sampleCount` and optional `calibrationId`. Those fields travel on raw telemetry and are intentionally excluded by the device processor from `KafkaDeviceData`. This service’s inbound OpenAPI and MapStruct model therefore remain device-only and match the unchanged device-data output; do not add sensor fields to device state/history just to mirror raw telemetry.
 
 Power telemetry may include measured `supplyVoltageMv` (board rail millivolts). The optional `batteryLevelPct` field is omitted when there is no battery charge reading. Older messages with a reported battery percentage remain valid. Deploy updated consumers before enabling this firmware format.
+
+## Diagnostic condition codes
+
+New observations use condition codes with three uppercase alphanumeric characters, an underscore and two uppercase alphanumeric characters, for example `BAT_01`. The OpenAPI `DeviceError.code` definition validates this six-character format. The catalog is extensible through additional well-formed identifiers.
+
+| Code | Condition |
+| --- | --- |
+| `BAT_01` | Low battery charge |
+| `BAT_02` | Battery measurement unavailable |
+| `SEN_01` | Sensor read failed |
+| `SEN_02` | Sensor reading outside its supported range |
+| `PMP_01` | Pump activation failed |
+| `PMP_02` | Pump failed to stop |
+
+Keep a condition's code stable as its severity changes. Within a device entry, `(component, code)` identifies a condition. Use a stable component identifier for each physical instance, such as `SOIL_SENSOR_A` and `SOIL_SENSOR_B`.
+
+The `errors` array declares the complete active diagnostic snapshot. For two ordered, complete observations, compare their sets of `(component, code)` pairs. A pair absent from the next snapshot has resolved. For example, critical `SEN_01` and critical `PMP_01` are two conditions; a later snapshot containing only `PMP_01` indicates that the sensor condition has resolved. Reconciliation requires complete snapshots and a reliable observation order. Diagnostic reconciliation and history transitions belong to the device service.
+
+Coordinate producer and consumer updates when adopting the compact format. Incoming legacy descriptive codes such as `LOW_BATTERY` fail the new validation. Existing persisted device summaries retain their original codes for historical compatibility.

@@ -47,7 +47,7 @@ class GeneratedMessageTest {
 
         assertThat(message.getDeviceId()).isEqualTo(UUID.fromString("550e8400-e29b-41d4-a716-446655440000"));
         assertThat(message.getObservedAt()).isEqualTo(1794164428500L);
-        assertThat(message.getErrors().getFirst().getCode()).isEqualTo("LOW_BATTERY");
+        assertThat(message.getErrors().getFirst().getCode()).isEqualTo("BAT_01");
         assertThat(validator.validate(message)).isEmpty();
         assertThat(original.has("payload")).isFalse();
         assertThat(json.readTree(json.writeValueAsString(message))).isEqualTo(original);

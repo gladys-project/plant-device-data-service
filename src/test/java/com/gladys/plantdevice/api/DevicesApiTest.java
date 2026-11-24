@@ -6,11 +6,11 @@ import java.util.Map;
 import java.util.List;
 
 import com.gladys.plantdevice.mapping.DeviceRegistrationMapperImpl;
+import com.gladys.plantdevice.api.model.DeviceSummary;
 import com.gladys.plantdevice.mapping.DeviceStateDocumentMapperImpl;
 import com.gladys.plantdevice.mapping.DeviceSummaryMapperImpl;
 import com.gladys.plantdevice.model.DeviceData;
 import com.gladys.plantdevice.model.State;
-import com.gladys.plantdevice.persistence.model.DeviceIdentity;
 import com.gladys.plantdevice.persistence.model.DeviceStateDocument;
 import com.gladys.plantdevice.persistence.repository.DeviceStateRepository;
 import com.gladys.plantdevice.persistence.repository.DiagnosticHistoryRepository;
@@ -27,6 +27,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -41,27 +42,26 @@ class DevicesApiTest {
     @MockitoBean DiagnosticHistoryRepository history;
 
     @Test
-    void listsNamedAndUnnamedEntriesForTheSameDevice() {
+    void listsNamedAndUnnamedDevices() {
         var id = UUID.randomUUID();
         var seenAt = Instant.parse("2026-11-21T10:15:30Z");
         var registered = new DeviceData();
         registered.setName("Balcony Arduino");
         registered.setState(State.REGISTERED);
-        var real = new DeviceStateDocument(new DeviceIdentity(id, false), registered, seenAt, 2L);
-        var mock = new DeviceStateDocument(new DeviceIdentity(id, true), new DeviceData(), seenAt, 0L);
-        when(states.findAll()).thenReturn(Flux.just(real, mock));
+        var real = new DeviceStateDocument(id, registered, seenAt, 2L);
+        var otherId = UUID.randomUUID();
+        var unnamed = new DeviceStateDocument(otherId, new DeviceData(), seenAt, 0L);
+        when(states.findAll()).thenReturn(Flux.just(real, unnamed));
 
         web.get().uri("/devices").accept(MediaType.APPLICATION_JSON).exchange()
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.length()").isEqualTo(2)
                 .jsonPath("$[0].deviceId").isEqualTo(id.toString())
-                .jsonPath("$[0].mock").isEqualTo(false)
                 .jsonPath("$[0].name").isEqualTo("Balcony Arduino")
                 .jsonPath("$[0].state").isEqualTo("REGISTERED")
                 .jsonPath("$[0].lastSeenAt").isEqualTo(seenAt.toString())
-                .jsonPath("$[1].deviceId").isEqualTo(id.toString())
-                .jsonPath("$[1].mock").isEqualTo(true)
+                .jsonPath("$[1].deviceId").isEqualTo(otherId.toString())
                 .jsonPath("$[1].name").doesNotExist()
                 .jsonPath("$[1].state").isEqualTo("UNNAMED");
     }
@@ -81,21 +81,19 @@ class DevicesApiTest {
         observation.setUptimeMs(28500L);
         observation.setObservedAt(1794164428500L);
         observation.setClockSource("MANUAL_TEST");
-        observation.setMock(false);
         observation.setName("Balcony Arduino");
         observation.setState(State.REGISTERED);
         observation.setBatteryLevelPct(10);
         observation.setSupplyVoltageMv(4750);
         observation.setErrors(List.of(new DeviceData.Diagnostic(
-                "LOW_BATTERY", "BATTERY", "ERROR", "Battery below threshold.")));
+                "BAT_01", "BATTERY", "ERROR", "Battery below threshold.")));
         var seenAt = Instant.parse("2026-11-21T10:15:30Z");
-        var document = new DeviceStateDocument(new DeviceIdentity(id, false), observation, seenAt, 2L);
+        var document = new DeviceStateDocument(id, observation, seenAt, 2L);
         when(states.findAll()).thenReturn(Flux.just(document));
 
         web.get().uri("/devices").accept(MediaType.APPLICATION_JSON).exchange()
                 .expectStatus().isOk().expectBody()
                 .jsonPath("$[0].deviceId").isEqualTo(id.toString())
-                .jsonPath("$[0].mock").isEqualTo(false)
                 .jsonPath("$[0].name").isEqualTo("Balcony Arduino")
                 .jsonPath("$[0].state").isEqualTo("REGISTERED")
                 .jsonPath("$[0].lastSeenAt").isEqualTo(seenAt.toString())
@@ -111,23 +109,46 @@ class DevicesApiTest {
                 .jsonPath("$[0].batteryLevelPct").isEqualTo(10)
                 .jsonPath("$[0].supplyVoltageMv").isEqualTo(4750)
                 .jsonPath("$[0].errors.length()").isEqualTo(1)
-                .jsonPath("$[0].errors[0].code").isEqualTo("LOW_BATTERY")
+                .jsonPath("$[0].errors[0].code").isEqualTo("BAT_01")
                 .jsonPath("$[0].errors[0].component").isEqualTo("BATTERY")
                 .jsonPath("$[0].errors[0].severity").isEqualTo("ERROR")
                 .jsonPath("$[0].errors[0].message").isEqualTo("Battery below threshold.");
     }
 
     @Test
+    void listsDistinctCriticalConditionsAndKeepsHistoricalDiagnosticCodesReadable() {
+        var id = UUID.randomUUID();
+        var observation = new DeviceData();
+        observation.setErrors(List.of(
+                new DeviceData.Diagnostic("SEN_01", "SOIL_SENSOR_A", "CRITICAL", "Sensor read failed."),
+                new DeviceData.Diagnostic("PMP_01", "PUMP_A", "CRITICAL", "Pump activation failed."),
+                new DeviceData.Diagnostic("LOW_BATTERY", "BATTERY", "ERROR", "Historical battery condition.")));
+        var document = new DeviceStateDocument(id, observation, Instant.EPOCH, 1L);
+        when(states.findAll()).thenReturn(Flux.just(document));
+
+        var summaries = web.get().uri("/devices").accept(MediaType.APPLICATION_JSON).exchange()
+                .expectStatus().isOk().expectBody(DeviceSummary[].class).returnResult().getResponseBody();
+
+        assertThat(summaries).hasSize(1);
+        assertThat(summaries[0].getErrors()).extracting(error -> error.getCode())
+                .containsExactly("SEN_01", "PMP_01", "LOW_BATTERY");
+        assertThat(summaries[0].getErrors().get(0).getSeverity().getValue()).isEqualTo("CRITICAL");
+        assertThat(summaries[0].getErrors().get(1).getSeverity().getValue()).isEqualTo("CRITICAL");
+        try (var factory = jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+            assertThat(factory.getValidator().validate(summaries[0])).isEmpty();
+        }
+    }
+
+    @Test
     void listsHistoricalDocumentsWithMissingObservationMetadata() {
         var id = UUID.randomUUID();
         var seenAt = Instant.parse("2026-11-21T10:15:30Z");
-        var document = new DeviceStateDocument(new DeviceIdentity(id, false), null, seenAt, null);
+        var document = new DeviceStateDocument(id, null, seenAt, null);
         when(states.findAll()).thenReturn(Flux.just(document));
 
         web.get().uri("/devices").accept(MediaType.APPLICATION_JSON).exchange()
                 .expectStatus().isOk().expectBody()
                 .jsonPath("$[0].deviceId").isEqualTo(id.toString())
-                .jsonPath("$[0].mock").isEqualTo(false)
                 .jsonPath("$[0].state").isEqualTo("UNNAMED")
                 .jsonPath("$[0].lastSeenAt").isEqualTo(seenAt.toString())
                 .jsonPath("$[0].eventId").doesNotExist()
@@ -145,13 +166,11 @@ class DevicesApiTest {
     }
 
     @Test
-    void registersRealAndMockEntriesAndReturnsTheSavedNameAndState() {
+    void registersTheDeviceAndReturnsTheSavedNameAndState() {
         var id = UUID.randomUUID();
-        var real = new DeviceStateDocument(new DeviceIdentity(id, false), new DeviceData(), Instant.EPOCH, 0L);
-        var mock = new DeviceStateDocument(new DeviceIdentity(id, true), new DeviceData(), Instant.EPOCH, 0L);
-        when(states.findAllById_DeviceId(id)).thenReturn(Flux.just(real, mock));
-        when(states.save(any(DeviceStateDocument.class))).thenAnswer(invocation ->
-                Mono.just(invocation.getArgument(0, DeviceStateDocument.class)));
+        var state = new DeviceStateDocument(id, new DeviceData(), Instant.EPOCH, 0L);
+        when(states.findById(id)).thenReturn(Mono.just(state));
+        when(states.save(state)).thenReturn(Mono.just(state));
 
         web.post().uri("/register").contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("deviceId", id.toString(), "name", "  Balcony Arduino  "))
@@ -160,8 +179,7 @@ class DevicesApiTest {
                 .jsonPath("$.name").isEqualTo("Balcony Arduino")
                 .jsonPath("$.state").isEqualTo("REGISTERED");
 
-        verify(states).save(real);
-        verify(states).save(mock);
+        verify(states).save(state);
     }
 
     @ParameterizedTest
@@ -185,7 +203,7 @@ class DevicesApiTest {
     @Test
     void reportsAnUnknownDeviceAsNotFound() {
         var id = UUID.randomUUID();
-        when(states.findAllById_DeviceId(id)).thenReturn(Flux.empty());
+        when(states.findById(id)).thenReturn(Mono.empty());
 
         web.post().uri("/register").contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("deviceId", id.toString(), "name", "Balcony Arduino"))
@@ -195,8 +213,8 @@ class DevicesApiTest {
     @Test
     void reportsAPersistenceFailureWithoutReturningASuccessBody() {
         var id = UUID.randomUUID();
-        var state = new DeviceStateDocument(new DeviceIdentity(id, false), new DeviceData(), Instant.EPOCH, 0L);
-        when(states.findAllById_DeviceId(id)).thenReturn(Flux.just(state));
+        var state = new DeviceStateDocument(id, new DeviceData(), Instant.EPOCH, 0L);
+        when(states.findById(id)).thenReturn(Mono.just(state));
         when(states.save(state)).thenReturn(Mono.error(new IllegalStateException("MongoDB write failed")));
 
         web.post().uri("/register").contentType(MediaType.APPLICATION_JSON)

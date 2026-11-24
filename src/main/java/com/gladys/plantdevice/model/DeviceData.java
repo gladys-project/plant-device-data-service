@@ -20,7 +20,6 @@ public class DeviceData {
     private Long uptimeMs;
     private long observedAt;
     private String clockSource;
-    private Boolean mock;
     private Integer batteryLevelPct;
     private Integer supplyVoltageMv;
     private List<Diagnostic> errors;

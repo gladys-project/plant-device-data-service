@@ -11,7 +11,6 @@ import com.gladys.plantdevice.mapping.DeviceStateDocumentMapper;
 import com.gladys.plantdevice.mapping.DeviceSummaryMapper;
 import com.gladys.plantdevice.model.DeviceData;
 import com.gladys.plantdevice.model.State;
-import com.gladys.plantdevice.persistence.model.DeviceIdentity;
 import com.gladys.plantdevice.persistence.model.DeviceStateDocument;
 import com.gladys.plantdevice.persistence.model.DiagnosticHistoryDocument;
 import com.gladys.plantdevice.persistence.repository.DeviceStateRepository;
@@ -35,28 +34,22 @@ public class PlantDeviceDataService {
 
     /** Creates current state for a device identity when it is first observed. */
     public Mono<Void> processDeviceData(DeviceData data) {
-        var identity = documentMapper.toIdentity(data);
-        return deviceStateRepository.findById(identity)
+        return deviceStateRepository.findById(data.getDeviceId())
                 .flatMap(deviceStateDocument -> updateIncomingData(deviceStateDocument, data))
                 .switchIfEmpty(Mono.defer(() -> persistIncomingData(data)))
                 .then();
     }
 
     public Flux<DiagnosticHistoryDocument> diagnosticHistoryDocument(UUID deviceId, int size){
-        var deviceIdentity = DeviceIdentity
-                .builder()
-                .deviceId(deviceId)
-                .mock(false)
-                .build();
         return diagnosticHistoryRepository
-                .findByDeviceOrderByRecordedAtDescIdAsc(deviceIdentity, Pageable.ofSize(size));
+                .findByDeviceIdOrderByRecordedAtDescIdAsc(deviceId, Pageable.ofSize(size));
     }
 
     public Mono<DeviceRegistrationResponse> registerDevice(UUID deviceId, String name) {
         var deviceName = name.strip();
-        return deviceStateRepository.findAllById_DeviceId(deviceId)
+        return deviceStateRepository.findById(deviceId)
                 .switchIfEmpty(Mono.error(() -> new NoSuchElementException("Device not found: " + deviceId)))
-                .concatMap(document -> {
+                .flatMap(document -> {
                     var observation = document.getLatestObservation();
                     observation.setName(deviceName);
                     observation.setState(State.REGISTERED);
@@ -71,7 +64,7 @@ public class PlantDeviceDataService {
     }
 
     private Mono<DeviceStateDocument> updateIncomingData(DeviceStateDocument data, DeviceData incomingData) {
-        log.info("Device updated with id: {}", data.getId());
+        log.info("Device updated with id: {}", data.getDeviceId());
         var state = data.getLatestObservation().getState();
         var name = data.getLatestObservation().getName();
         checkStaleData(data, incomingData);

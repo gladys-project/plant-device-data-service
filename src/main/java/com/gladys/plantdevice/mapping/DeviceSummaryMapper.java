@@ -13,8 +13,7 @@ import org.mapstruct.ReportingPolicy;
 
 @Mapper(componentModel = MappingConstants.ComponentModel.SPRING, unmappedTargetPolicy = ReportingPolicy.ERROR)
 public interface DeviceSummaryMapper {
-    @Mapping(target = "deviceId", source = "id.deviceId")
-    @Mapping(target = "mock", source = "id.mock")
+    @Mapping(target = "deviceId", source = "deviceId")
     @Mapping(target = "name", source = "latestObservation.name")
     @Mapping(target = "state", source = "latestObservation.state", defaultValue = "UNNAMED")
     @Mapping(target = "schemaVersion", source = "latestObservation.schemaVersion")

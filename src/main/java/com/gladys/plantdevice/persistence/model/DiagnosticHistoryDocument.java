@@ -11,13 +11,13 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.MongoId;
 
 @Document("device_diagnostic_history")
-@CompoundIndex(name = "device_history", def = "{'device': 1, 'recordedAt': -1, '_id': 1}")
+@CompoundIndex(name = "device_history", def = "{'deviceId': 1, 'recordedAt': -1, '_id': 1}")
 @Data
 @AllArgsConstructor
 public class DiagnosticHistoryDocument {
     @MongoId
     private final String id;
-    private DeviceIdentity device;
+    private UUID deviceId;
     private UUID sourceEventId;
     private DeviceData.Diagnostic diagnostic;
     private Change change;

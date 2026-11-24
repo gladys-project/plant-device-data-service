@@ -60,7 +60,7 @@ class KafkaDeviceDataMapperTest {
         source.getErrors().clear();
 
         assertThat(target.getErrors()).containsExactly(diagnostic);
-        assertThat(diagnostic.message()).isEqualTo("Mock battery level is below the pump operating threshold.");
+        assertThat(diagnostic.message()).isEqualTo("Battery level is below the pump operating threshold.");
         assertThatThrownBy(() -> target.getErrors().clear()).isInstanceOf(UnsupportedOperationException.class);
     }
 

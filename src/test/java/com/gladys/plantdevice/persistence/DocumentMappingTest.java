@@ -9,7 +9,6 @@ import com.gladys.plantdevice.mapping.KafkaDeviceDataMapper;
 import com.gladys.plantdevice.message.KafkaDeviceData;
 import com.gladys.plantdevice.model.DeviceData;
 import com.gladys.plantdevice.model.State;
-import com.gladys.plantdevice.persistence.model.DeviceIdentity;
 import com.gladys.plantdevice.persistence.model.DeviceStateDocument;
 import com.gladys.plantdevice.persistence.model.DiagnosticHistoryDocument;
 import org.bson.Document;
@@ -49,21 +48,20 @@ class DocumentMappingTest {
     @Test
     void roundTripsDeviceIdentityObservationAndServerTimeWithoutChangingTheInputModel() throws Exception {
         var observation = observation();
-        var identity = new DeviceIdentity(observation.getDeviceId(), true);
+        var identity = observation.getDeviceId();
         var seenAt = Instant.parse("2026-11-17T10:00:00Z");
         var state = new DeviceStateDocument(identity, observation, seenAt, null);
         var bson = new Document();
 
         converter.write(state, bson);
 
-        assertThat(bson.get("_id", Document.class).get("deviceId")).isEqualTo(observation.getDeviceId());
-        assertThat(bson.get("_id", Document.class).getBoolean("mock")).isTrue();
+        assertThat(bson.get("_id")).isEqualTo(observation.getDeviceId());
         assertThat(bson.getDate("lastSeenAt")).isEqualTo(Date.from(seenAt));
         assertThat(converter.read(DeviceStateDocument.class, bson)).isEqualTo(state);
     }
 
     @Test
-    void mapsObservationWithItsMockIdentityAndTheSuppliedPersistenceMetadata() throws Exception {
+    void mapsObservationWithItsDeviceUuidAndTheSuppliedPersistenceMetadata() throws Exception {
         var data = observation();
         var seenAt = Instant.parse("2026-11-17T10:00:00Z");
         var mapper = Mappers.getMapper(DeviceStateDocumentMapper.class);
@@ -73,8 +71,7 @@ class DocumentMappingTest {
         var bson = new Document();
         converter.write(insert, bson);
 
-        assertThat(bson.get("_id", Document.class).get("deviceId")).isEqualTo(data.getDeviceId());
-        assertThat(bson.get("_id", Document.class).getBoolean("mock")).isTrue();
+        assertThat(bson.get("_id")).isEqualTo(data.getDeviceId());
         assertThat(insert.getLatestObservation()).isEqualTo(data);
         assertThat(insert.getLastSeenAt()).isEqualTo(seenAt);
         assertThat(insert.getVersion()).isNull();
@@ -95,7 +92,7 @@ class DocumentMappingTest {
     void historyKeepsLiteralIdsSourceEventIdentityAndDiagnosticDetails() throws Exception {
         var data = observation();
         var history = new DiagnosticHistoryDocument("507f1f77bcf86cd799439011",
-                new DeviceIdentity(data.getDeviceId(), true), data.getEventId(), data.getErrors().getFirst(),
+                data.getDeviceId(), data.getEventId(), data.getErrors().getFirst(),
                 DiagnosticHistoryDocument.Change.OPENED, data.getObservedAt(), Instant.parse("2026-11-17T10:00:00Z"));
         var bson = new Document();
 
@@ -106,9 +103,5 @@ class DocumentMappingTest {
         assertThat(converter.read(DiagnosticHistoryDocument.class, bson)).isEqualTo(history);
     }
 
-    @Test
-    void aMockIdentityCannotEqualTheRealDeviceIdentity() {
-        var id = UUID.randomUUID();
-        assertThat(new DeviceIdentity(id, false)).isNotEqualTo(new DeviceIdentity(id, true));
-    }
+
 }

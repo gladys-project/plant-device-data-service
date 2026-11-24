@@ -13,7 +13,6 @@ import com.gladys.plantdevice.mapping.DeviceRegistrationMapper;
 import com.gladys.plantdevice.mapping.DeviceSummaryMapper;
 import com.gladys.plantdevice.model.DeviceData;
 import com.gladys.plantdevice.model.State;
-import com.gladys.plantdevice.persistence.model.DeviceIdentity;
 import com.gladys.plantdevice.persistence.model.DeviceStateDocument;
 import com.gladys.plantdevice.persistence.repository.DeviceStateRepository;
 import com.gladys.plantdevice.persistence.repository.DiagnosticHistoryRepository;
@@ -22,7 +21,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -54,16 +52,13 @@ class PlantDeviceDataServiceTest {
     }
 
     @Test
-    void registersAndRenamesAllEntriesForTheSameDeviceId() {
+    void registersAndRenamesTheDeviceByUuid() {
         var observation = observation();
-        var mockState = mapper.toDocument(observation, Instant.EPOCH, 0L);
-        observation.setMock(false);
         observation.setName("Old name");
         observation.setState(State.REGISTERED);
-        var realState = mapper.toDocument(observation, Instant.EPOCH, 2L);
-        when(states.findAllById_DeviceId(observation.getDeviceId())).thenReturn(Flux.just(mockState, realState));
-        when(states.save(any(DeviceStateDocument.class))).thenAnswer(invocation ->
-                Mono.just(invocation.getArgument(0, DeviceStateDocument.class)));
+        var existing = mapper.toDocument(observation, Instant.EPOCH, 2L);
+        when(states.findById(observation.getDeviceId())).thenReturn(Mono.just(existing));
+        when(states.save(existing)).thenReturn(Mono.just(existing));
 
         StepVerifier.create(service.registerDevice(observation.getDeviceId(), "  Balcony Arduino  "))
                 .assertNext(response -> {
@@ -72,17 +67,15 @@ class PlantDeviceDataServiceTest {
                     assertThat(response.getState().getValue()).isEqualTo("REGISTERED");
                 }).expectComplete().verify(Duration.ofSeconds(1));
 
-        for (var state : List.of(mockState, realState)) {
-            verify(states).save(state);
-            assertThat(state.getLatestObservation().getName()).isEqualTo("Balcony Arduino");
-            assertThat(state.getLatestObservation().getState()).isEqualTo(State.REGISTERED);
-        }
+        verify(states).save(existing);
+        assertThat(existing.getLatestObservation().getName()).isEqualTo("Balcony Arduino");
+        assertThat(existing.getLatestObservation().getState()).isEqualTo(State.REGISTERED);
     }
 
     @Test
     void reportsAnUnknownDeviceIdWithoutSaving() {
         var deviceId = UUID.randomUUID();
-        when(states.findAllById_DeviceId(deviceId)).thenReturn(Flux.empty());
+        when(states.findById(deviceId)).thenReturn(Mono.empty());
 
         StepVerifier.create(service.registerDevice(deviceId, "Balcony Arduino"))
                 .expectError(NoSuchElementException.class).verify(Duration.ofSeconds(1));
@@ -95,7 +88,7 @@ class PlantDeviceDataServiceTest {
         var observation = observation();
         var state = mapper.toDocument(observation, Instant.EPOCH, 0L);
         var failure = new IllegalStateException("MongoDB write failed");
-        when(states.findAllById_DeviceId(observation.getDeviceId())).thenReturn(Flux.just(state));
+        when(states.findById(observation.getDeviceId())).thenReturn(Mono.just(state));
         when(states.save(state)).thenReturn(Mono.error(failure));
 
         StepVerifier.create(service.registerDevice(observation.getDeviceId(), "Balcony Arduino"))
@@ -105,7 +98,7 @@ class PlantDeviceDataServiceTest {
     @Test
     void savesFirstObservationWithANewDocumentVersionOnSubscription() {
         var observation = observation();
-        var identity = new DeviceIdentity(observation.getDeviceId(), true);
+        var identity = observation.getDeviceId();
         when(states.findById(identity)).thenReturn(Mono.empty());
         when(states.save(any(DeviceStateDocument.class))).thenAnswer(invocation ->
                 Mono.just(invocation.getArgument(0, DeviceStateDocument.class)));
@@ -117,7 +110,7 @@ class PlantDeviceDataServiceTest {
 
         var document = ArgumentCaptor.forClass(DeviceStateDocument.class);
         verify(states).save(document.capture());
-        assertThat(document.getValue().getId()).isEqualTo(identity);
+        assertThat(document.getValue().getDeviceId()).isEqualTo(identity);
         assertThat(document.getValue().getLatestObservation()).isEqualTo(observation);
         assertThat(document.getValue().getLastSeenAt()).isNotNull();
         assertThat(document.getValue().getVersion()).isNull();
@@ -137,7 +130,7 @@ class PlantDeviceDataServiceTest {
         incoming.setBatteryLevelPct(42);
         incoming.setName(null);
         incoming.setState(State.UNNAMED);
-        when(states.findById(existing.getId())).thenReturn(Mono.just(existing));
+        when(states.findById(existing.getDeviceId())).thenReturn(Mono.just(existing));
         when(states.save(existing)).thenReturn(Mono.just(existing));
         var receivedAfter = Instant.now();
 
@@ -163,7 +156,7 @@ class PlantDeviceDataServiceTest {
         var existing = mapper.toDocument(observation, Instant.EPOCH, 4L);
         var incoming = mapper.copyObservation(observation);
         incoming.setObservedAt(1000);
-        when(states.findById(existing.getId())).thenReturn(Mono.just(existing));
+        when(states.findById(existing.getDeviceId())).thenReturn(Mono.just(existing));
 
         StepVerifier.create(service.processDeviceData(incoming))
                 .expectErrorMessage("Stale device entry").verify(Duration.ofSeconds(1));
@@ -178,7 +171,7 @@ class PlantDeviceDataServiceTest {
         var observation = observation();
         var existing = mapper.toDocument(observation, Instant.EPOCH, 4L);
         var failure = new IllegalStateException("MongoDB update failed");
-        when(states.findById(existing.getId())).thenReturn(Mono.just(existing));
+        when(states.findById(existing.getDeviceId())).thenReturn(Mono.just(existing));
         when(states.save(existing)).thenReturn(Mono.error(failure));
 
         StepVerifier.create(service.processDeviceData(observation))
@@ -189,7 +182,7 @@ class PlantDeviceDataServiceTest {
     void propagatesFailureFromTheSavePublisher() {
         var observation = observation();
         var failure = new IllegalStateException("MongoDB write failed");
-        when(states.findById(new DeviceIdentity(observation.getDeviceId(), true))).thenReturn(Mono.empty());
+        when(states.findById(observation.getDeviceId())).thenReturn(Mono.empty());
         when(states.save(any(DeviceStateDocument.class))).thenReturn(Mono.error(failure));
 
         StepVerifier.create(service.processDeviceData(observation))
@@ -202,7 +195,6 @@ class PlantDeviceDataServiceTest {
         observation.setEventId(UUID.randomUUID());
         observation.setState(State.UNNAMED);
         observation.setEventType("SOIL_MOISTURE_READING");
-        observation.setMock(true);
         observation.setBatteryLevelPct(10);
         observation.setErrors(List.of());
         return observation;

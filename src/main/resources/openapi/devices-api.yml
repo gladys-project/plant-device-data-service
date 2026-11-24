@@ -10,7 +10,7 @@ paths:
       tags: [Devices]
       operationId: listDevices
       summary: List stored device entries
-      description: Includes all stored latest-observation fields, registration details, server receipt time and document version for real and mock entries. Returns an empty array when no devices have been saved.
+      description: Includes all stored latest-observation fields, registration details, server receipt time and document version for devices. Returns an empty array when no devices have been saved.
       responses:
         '200':
           description: Stored device entries
@@ -27,7 +27,7 @@ paths:
       summary: Register or rename an observed device
       description: |
         Assigns a name and REGISTERED state to existing entries identified by
-        deviceId, including both real and mock entries. Repeating this request
+        deviceId. Repeating this request
         can rename a device. The device must already have a stored observation.
       requestBody:
         required: true
@@ -111,14 +111,11 @@ components:
       type: object
       additionalProperties: false
       description: Latest stored device observation and registration details. Observation fields are optional for older documents with incomplete metadata.
-      required: [deviceId, mock, state, lastSeenAt]
+      required: [deviceId, state, lastSeenAt]
       properties:
         deviceId:
           type: string
           format: uuid
-        mock:
-          type: boolean
-          description: Distinguishes a mock entry from the real entry with the same device UUID.
         name:
           type: [string, 'null']
           description: The user-assigned name, if set.

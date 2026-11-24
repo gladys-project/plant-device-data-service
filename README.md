@@ -25,24 +25,24 @@ The registered function is `onDeviceDataEvent`. Autodetection is off. Consumer a
 
 The wire DTO and internal `DeviceData` stay free of MongoDB annotations. Persistence models live under `persistence.model`, and Spring Data interfaces under `persistence.repository`. `DeviceStateDocument` is a mutable class with a fixed ID. A caller can edit a loaded document and save it using its existing version.
 
-`DeviceStateDocumentMapper.toDocument(data, receivedAt, version)` builds a state document with a copy of the observation, its mock-aware identity and the supplied server receipt time. Pass `null` as the version for an insert or pass the version loaded from MongoDB for an update.
+`DeviceStateDocumentMapper.toDocument(data, receivedAt, version)` builds a state document with a copy of the observation, its device UUID and the supplied server receipt time. Pass `null` as the version for an insert or pass the version loaded from MongoDB for an update.
 
 The service inserts the first observation and updates existing documents with incoming readings, preserving their name, registration state, identity and version. Each accepted update refreshes `lastSeenAt` using server time. Readings with `observedAt` earlier than the stored observation are rejected; equal timestamps are accepted. This ordering assumes a consistent device clock.
 
 | Collection / repository | Stored data and operations |
 | --- | --- |
-| `device_states` / `DeviceStateRepository` | One latest observation per `DeviceIdentity(deviceId, mock)`, server-side `lastSeenAt`, and optimistic-lock `version`; standard reactive CRUD |
+| `device_states` / `DeviceStateRepository` | One latest observation per device UUID, server-side `lastSeenAt`, and optimistic-lock `version`; standard reactive CRUD |
 | `device_diagnostic_history` / `DiagnosticHistoryRepository` | Source event ID, diagnostic, `OPENED`/`UPDATED`/`RESOLVED`, original epoch `observedAt`, and server `recordedAt`; reactive CRUD/insert and bounded device-scoped history reads |
 
-`DeviceIdentity` is serializable and serves as the compound state ID. It separates mock and real state for the same UUID. Callers must keep this identity consistent with the embedded observation. All UUIDs use Boot's `spring.mongodb.representation.uuid=standard` setting. `@Version` rejects stale saves with acknowledged MongoDB writes; it does not decide whether an incoming observation is chronologically newer. Callers retain the loaded version when updating a state document.
+`DeviceStateDocument.deviceId` is the UUID stored as MongoDB `_id`. Diagnostic history stores the same UUID in its `deviceId` field. Callers keep this UUID consistent with the embedded observation. All UUIDs use Boot's `spring.mongodb.representation.uuid=standard` setting. `@Version` rejects stale saves with acknowledged MongoDB writes; it does not decide whether an incoming observation is chronologically newer. Callers retain the loaded version when updating a state document.
 
 Diagnostic history documents are mutable classes with fixed literal string IDs (`@MongoId`). Supply a stable ID for each diagnostic transition and use `insert` for append semantics; inserting an existing ID fails. One source event can produce multiple diagnostic changes, so `sourceEventId` alone is not a unique transition ID. The repository does not generate those IDs, infer transitions or enforce append-only access on its inherited CRUD methods.
 
-`findByDeviceOrderByRecordedAtDescIdAsc(identity, pageable)` filters by both device and mock flag, sorts newest server timestamp first with an ID tie-breaker, and accepts a bounded `PageRequest`. Index creation stays disabled at application startup. Provision the declared history index separately if needed:
+`findByDeviceIdOrderByRecordedAtDescIdAsc(deviceId, pageable)` filters by device UUID, sorts newest server timestamp first with an ID tie-breaker, and accepts a bounded `PageRequest`. Index creation stays disabled at application startup. Provision the declared history index separately if needed:
 
 ```javascript
 db.device_diagnostic_history.createIndex(
-  {device: 1, recordedAt: -1, _id: 1},
+  {deviceId: 1, recordedAt: -1, _id: 1},
   {name: "device_history"}
 )
 ```
@@ -57,15 +57,15 @@ No retention/TTL policy or notification outbox is added. The service owns future
 Mono<Void> processDeviceData(DeviceData data)
 ```
 
-The service looks up the identity using both `deviceId` and `mock`. For a new identity, it saves the first observation with the server time and lets Spring Data initialize the version. For a known identity, it completes without writing. The returned publisher reports completion or a database error. State updates, diagnostic reconciliation and notifications are future steps.
+The service looks up each device by UUID. It inserts the first observation with server receipt time and a new version. Accepted subsequent readings update the observation and receipt time while retaining the name, registration state and stored version. The returned publisher reports completion or a database error. Diagnostic reconciliation and notifications are future steps.
 
-`registerDevice(deviceId, name)` sets or changes the name for every stored entry matching the device UUID and sets its registration state to `REGISTERED`. It trims the name and reports an unknown UUID as an error. The API layer is responsible for request validation. Mock and real observations keep their own stored entries.
+`registerDevice(deviceId, name)` sets or changes the name for the stored device matching the UUID and sets its registration state to `REGISTERED`. It trims the name and reports an unknown UUID as an error. The API layer is responsible for request validation.
 
 `diagnosticHistoryDocument(deviceId, size)` reads the requested number of most recent diagnostic entries for the real device.
 
 ## Device REST contracts
 
-[`devices-api.yml`](src/main/resources/openapi/devices-api.yml) defines `GET /devices`. A successful response is a JSON array containing the stored device identity, mock flag, name, registration state, server-side `lastSeenAt`, document `version` and every latest-observation field. These include `schemaVersion`, `eventId`, `eventType`, `bootId`, `sequence`, `uptimeMs`, `observedAt`, `clockSource`, optional `batteryLevelPct` and `supplyVoltageMv`, and the complete `errors` array with diagnostic code, component, severity and message. `observedAt` uses Unix epoch milliseconds; `lastSeenAt` uses UTC date-time text. Metadata fields are optional for historical documents with incomplete observations. An empty store returns `[]`. Mock and real entries are listed separately. Sensor measurements travel through the telemetry data path.
+[`devices-api.yml`](src/main/resources/openapi/devices-api.yml) defines `GET /devices`. A successful response is a JSON array containing the stored device UUID, name, registration state, server-side `lastSeenAt`, document `version` and every latest-observation field. These include `schemaVersion`, `eventId`, `eventType`, `bootId`, `sequence`, `uptimeMs`, `observedAt`, `clockSource`, optional `batteryLevelPct` and `supplyVoltageMv`, and the complete `errors` array with diagnostic code, component, severity and message. `observedAt` uses Unix epoch milliseconds; `lastSeenAt` uses UTC date-time text. Metadata fields are optional for historical documents with incomplete observations. An empty store returns `[]`. Sensor measurements travel through the telemetry data path.
 
 Maven generates `DevicesApi`, `DevicesApiDelegate`, `DevicesApiController`, and `DeviceSummary` under `target/generated-sources/devices-api` during `generate-sources`. Spring registers the generated controller at runtime. The delegate returns the summaries from `PlantDeviceDataService.listDevices()`. The service reads the stored entries and maps them with `DeviceSummaryMapper`.
 
@@ -92,7 +92,7 @@ The endpoint returns `200` after all matching entries are saved. The JSON respon
 }
 ```
 
-Invalid input returns `400`, an unknown device returns `404` and persistence failures propagate as server errors. Registration applies to stored real and mock entries sharing the UUID. Maven generates `DeviceRegistrationRequest`, `DeviceRegistrationResponse` and the reactive API/delegate method. The service maps the response using `DeviceRegistrationMapper`; the delegate calls the service and builds the HTTP response.
+Invalid input returns `400`, an unknown device returns `404` and persistence failures propagate as server errors. Registration identifies the device by its UUID. Maven generates `DeviceRegistrationRequest`, `DeviceRegistrationResponse` and the reactive API/delegate method. The service maps the response using `DeviceRegistrationMapper`; the delegate calls the service and builds the HTTP response.
 
 ## Configuration and startup
 
@@ -162,7 +162,7 @@ Pushing a `v*` tag publishes the verified JAR to GitHub Releases. The publicatio
 ./mvnw clean verify  # Also Kafka + MongoDB integration tests; Docker required
 ```
 
-Surefire runs `*Test`; Failsafe runs `*IT` during `integration-test` and `verify`. Integration tests use pinned `apache/kafka:4.1.0` and `mongo:8.0.17`, explicit readiness and mapped addresses. They verify configured Kafka key/payload delivery and real reactive MongoDB write/read/delete using test-only data. Repository integration checks additionally verify UUID/document round trips, mock/real separation, optimistic locking, deterministic history pagination and duplicate insert rejection. Kafka topic provisioning is enabled only in the integration fixture. Docker unavailability fails verification; tests never silently skip. StepVerifier tests actual HTTP/Mongo publishers, and all waits have limits.
+Surefire runs `*Test`; Failsafe runs `*IT` during `integration-test` and `verify`. Integration tests use pinned `apache/kafka:4.1.0` and `mongo:8.0.17`, explicit readiness and mapped addresses. They verify configured Kafka key/payload delivery and real reactive MongoDB write/read/delete using test-only data. Repository integration checks additionally verify UUID/document round trips, device UUID isolation, optimistic locking, deterministic history pagination and duplicate insert rejection. Kafka topic provisioning is enabled only in the integration fixture. Docker unavailability fails verification; tests never silently skip. StepVerifier tests actual HTTP/Mongo publishers, and all waits have limits.
 
 TDD increments: bootstrap test failed without a Boot configuration; configuration tests failed before defaults/bindings were added; generated-model tests failed before OpenAPI generation was configured; mapper tests failed before the mapper existed; a client-address assertion exposed test import precedence and passed after test overrides were placed in a later YAML document. Repository/model tests also failed before their definitions existed, real MongoDB checks exposed UUID representation and serializable-ID requirements, and service contract tests failed before its entrypoint existed. Each increment was run again after implementation. Test fixtures were corrected where framework property names required it; these corrections are not claimed as production regressions. Integration checks verify infrastructure only, not a business message-processing pipeline.
 
@@ -196,3 +196,17 @@ Keep a condition's code stable as its severity changes. Within a device entry, `
 The `errors` array declares the complete active diagnostic snapshot. For two ordered, complete observations, compare their sets of `(component, code)` pairs. A pair absent from the next snapshot has resolved. For example, critical `SEN_01` and critical `PMP_01` are two conditions; a later snapshot containing only `PMP_01` indicates that the sensor condition has resolved. Reconciliation requires complete snapshots and a reliable observation order. Diagnostic reconciliation and history transitions belong to the device service.
 
 Coordinate producer and consumer updates when adopting the compact format. Incoming legacy descriptive codes such as `LOW_BATTERY` fail the new validation. Existing persisted device summaries retain their original codes for historical compatibility.
+
+## UUID-only database upgrade
+
+The UUID-only identity requires fresh `device_states` and `device_diagnostic_history` collections when upgrading from compound document IDs. MongoDB retains its Docker volume across restarts. Stop the plant device data service before resetting its collections and deploy the updated application before resuming consumption.
+
+For a deliberately clean start, these `mongosh` commands erase existing device state and diagnostic history in the application database.
+
+```javascript
+const applicationDb = db.getSiblingDB("plant_device_data");
+applicationDb.device_states.drop();
+applicationDb.device_diagnostic_history.drop();
+```
+
+Provision the history index shown above after resetting the collections. Coordinate the bridge, processor, service and Arduino payload updates for the field removal.

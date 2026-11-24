@@ -1,6 +1,7 @@
 package com.gladys.plantdevice.persistence.model;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import com.gladys.plantdevice.model.DeviceData;
 import lombok.AllArgsConstructor;
@@ -14,7 +15,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @AllArgsConstructor
 public class DeviceStateDocument {
     @Id
-    private final DeviceIdentity id;
+    private final UUID deviceId;
 
     private DeviceData latestObservation;
     private Instant lastSeenAt;
